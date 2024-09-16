@@ -32,9 +32,11 @@ def home():
 def handle_message(event):
     question = event.message.text #ユーザからのメッセージを取得
     # ユーザーからのメッセージに対して応答
+    text = generate_response(question)  #応答メッセージの作成
+    texts = text.split('\n')     #応答メッセージに改行を含む場合、別の吹き出しとして送信するため分割
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=generate_response(question))
+        [TextSendMessage(text=texts[i]) for i in range(len(texts))] #複数メッセージ送信の際はTextSendMessageのリストを渡す
     )
 
 # 質問に対するレスポンスを生成する関数
