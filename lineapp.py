@@ -4,9 +4,12 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 import os
+from dotenv import load_dotenv
 
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
+
+load_dotenv()
 
 #Lineのアクセストークンとシークレットを設定
 line_bot_api = LineBotApi(os.environ["LINE_BOT_API"])
