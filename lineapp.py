@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
 
-load_dotenv()
+load_dotenv() #pyenv環境内ででAPIキーを取得するため
 
 #Lineのアクセストークンとシークレットを設定
 line_bot_api = LineBotApi(os.environ["LINE_BOT_API"])
