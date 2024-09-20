@@ -1,10 +1,11 @@
 from flask import Flask, request, abort
 from flask_cors import CORS
 from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, StickerMessage, StickerSendMessage
 import openai
 import os
 from dotenv import load_dotenv
+import random
 
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
@@ -27,7 +28,7 @@ def home():
     # ページを表示
     return abort(400)
 
-#ユーザーからメッセージが送られてきたときの処理
+#ユーザーからテキストメッセージが送られてきたときの処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     question = event.message.text #ユーザからのメッセージを取得
@@ -37,6 +38,25 @@ def handle_message(event):
     line_bot_api.reply_message(
         event.reply_token,
         [TextSendMessage(text=texts[i]) for i in range(len(texts))] #複数メッセージ送信の際はTextSendMessageのリストを渡す
+    )
+
+#ユーザーからスタンプが送られてきたときの処理 とりあえずランダムでスタンプを送信
+@handler.add(MessageEvent, message=StickerMessage)
+def handle_message(event):
+    package_id_list = [11537, 11538, 11539]
+    sticker_id_list = ['520027', '51626', '521141']
+    num = random.randint(0, len(package_id_list)-1)
+    if num == 0:
+        last = str(random.randint(40, 73))
+    elif num == 1:
+        last = str(random.randint(494, 533))
+    else :
+        last = str(random.randint(10, 49))
+        
+    line_bot_api.reply_message(
+        event.reply_token,
+        #StickerSendMessage(package_id=event.message.package_id,sticker_id=event.message.sticker_id)   オウム返し
+        StickerSendMessage(package_id=package_id_list[num],sticker_id=int(sticker_id_list[num] + last))
     )
 
 # 質問に対するレスポンスを生成する関数

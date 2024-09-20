@@ -5,6 +5,7 @@
         "profile_name": "default",
         "project_name": "line",
         "runtime": "python3.10",
-        "s3_bucket": "zappa-uis6uem5w"
+        "s3_bucket": "zappa-uis6uem5w",
+        "slim_handler": true
     }
 }
