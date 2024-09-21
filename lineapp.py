@@ -44,19 +44,18 @@ def handle_message(event):
 @handler.add(MessageEvent, message=StickerMessage)
 def handle_message(event):
     package_id_list = [11537, 11538, 11539]
-    sticker_id_list = ['520027', '51626', '521141']
     num = random.randint(0, len(package_id_list)-1)
     if num == 0:
-        last = str(random.randint(40, 73))
+        sticker_id = random.randint(52002740, 52002773)
     elif num == 1:
-        last = str(random.randint(494, 533))
+        sticker_id = random.randint(51626494, 51626533)
     else :
-        last = str(random.randint(10, 49))
+        sticker_id = random.randint(52114110, 52114149)
         
     line_bot_api.reply_message(
         event.reply_token,
         #StickerSendMessage(package_id=event.message.package_id,sticker_id=event.message.sticker_id)   オウム返し
-        StickerSendMessage(package_id=package_id_list[num],sticker_id=int(sticker_id_list[num] + last))
+        StickerSendMessage(package_id=package_id_list[num], sticker_id=sticker_id)
     )
 
 # 質問に対するレスポンスを生成する関数
