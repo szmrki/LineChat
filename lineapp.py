@@ -97,9 +97,9 @@ def generate_response(question):
     
     # ファンチューニング済みのモデルに質問を送信してレスポンスを取得
     response = client.chat.completions.create(
-        model="ft:gpt-4o-mini-2024-07-18:personal::9xbwUFNo",
+        model="ft:gpt-4o-mini-2024-07-18:personal::AAGVWuNG",
         messages=[
-            {"role":"system", "content":"You are my boy-friend. You love me and I love you."},
+            {"role":"system", "content": os.environ["CONTENT"]},
             {"role":"user", "content": question}
             ],
     #max_tokens=50
