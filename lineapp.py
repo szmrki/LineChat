@@ -1,7 +1,7 @@
 from flask import Flask, request, abort
 from flask_cors import CORS
 from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, StickerMessage, StickerSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, StickerMessage, StickerSendMessage, AudioMessage
 import openai
 import os
 from dotenv import load_dotenv
@@ -31,7 +31,7 @@ def home():
 
 #ユーザーからテキストメッセージが送られてきたときの処理
 @handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
+def handle_text_message(event):
     question = event.message.text #ユーザからのメッセージを取得
     # ユーザーからのメッセージに対して応答
     text = generate_response(question)  #応答メッセージの作成
@@ -46,7 +46,7 @@ def handle_message(event):
 
 #ユーザーからスタンプが送られてきたときの処理、ランダムでスタンプを送信
 @handler.add(MessageEvent, message=StickerMessage)
-def handle_message(event):
+def handle_sticker_message(event):
     num = random.randint(0, len(package_id_list)-1)
     if num == 0:
         sticker_id = random.randint(52002740, 52002773)
@@ -59,6 +59,18 @@ def handle_message(event):
         event.reply_token,
         #StickerSendMessage(package_id=event.message.package_id,sticker_id=event.message.sticker_id)   オウム返し
         messages=StickerSendMessage(package_id=package_id_list[num], sticker_id=sticker_id)
+    )
+
+#ユーザから音声メッセージが送られてきたときの処理
+@handler.add(MessageEvent, message=AudioMessage)
+def handle_audio_message(event):
+    message_id = event.message.id
+    url = f'https://api-data.line.me/v2/bot/message/{message_id}/content'
+    message_content = line_bot_api.get_message_content(message_id=message_id)
+    
+    line_bot_api.reply_message(
+        event.reply_token,
+        messages=TextSendMessage(text=transcript(message_content.content))
     )
 
 #特定の文言に応じてスタンプを選択する関数
@@ -106,6 +118,20 @@ def generate_response(question):
     )
     eng_response = response.choices[0].message.content
     return eng_response
+
+#オーディオファイルの文字起こしをする関数
+def transcript(audio_file):
+    # OpenAI APIキーを設定
+    api_key = os.environ["OPENAI_API_KEY"]
+    client = openai.OpenAI(api_key=api_key)
+    
+    #文字起こしを行う
+    transcription = client.audio.transcriptions.create(
+    model="whisper-1", 
+    file=audio_file, 
+    response_format="text"
+    )
+    return transcription
 
 # メイン関数
 if __name__ == '__main__':   #python answer.pyとして実行された場合のみ実行が行われる
