@@ -2,10 +2,14 @@ from flask import Flask, request, abort
 from flask_cors import CORS
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, StickerMessage, StickerSendMessage, AudioMessage
-import openai
+from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import random
+from pathlib import Path
+import glob
+import deepl
+from langdetect import detect
 
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
@@ -65,14 +69,26 @@ def handle_sticker_message(event):
 @handler.add(MessageEvent, message=AudioMessage)
 def handle_audio_message(event):
     message_id = event.message.id
-    url = f'https://api-data.line.me/v2/bot/message/{message_id}/content'
-    message_content = line_bot_api.get_message_content(message_id=message_id)
+    #url = f'https://api-data.line.me/v2/bot/message/{message_id}/content'
+    message_content = line_bot_api.get_message_content(message_id=message_id)  #音声データをバイナリデータとして取得
+    audio_data = b''
+    for chunk in message_content.iter_content():
+        audio_data += chunk
     
+    audio_filename = f'audio_{message_id}.m4a'
+    with open(f'/tmp/{audio_filename}', 'wb') as f:   #Lambda関数の/tmpに一時保存
+        f.write(audio_data)
+
     line_bot_api.reply_message(
         event.reply_token,
-        messages=TextSendMessage(text=transcript(message_content.content))
+        messages=TextSendMessage(text=transcribe_audio(f'/tmp/{audio_filename}'))
     )
-
+    
+    # 一時ディレクトリ配下のファイルを全て削除
+    for p in glob.glob("/tmp/*"):
+       if os.path.isfile(p):
+           os.remove(p)
+    
 #特定の文言に応じてスタンプを選択する関数
 def choice_stamp(text, messages):  
     num = random.randint(0, len(package_id_list)-1)
@@ -105,7 +121,7 @@ def choice_stamp(text, messages):
 def generate_response(question):
     # OpenAI APIキーを設定
     api_key = os.environ["OPENAI_API_KEY"]
-    client = openai.OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key)
     
     # ファンチューニング済みのモデルに質問を送信してレスポンスを取得
     response = client.chat.completions.create(
@@ -120,17 +136,24 @@ def generate_response(question):
     return eng_response
 
 #オーディオファイルの文字起こしをする関数
-def transcript(audio_file):
+def transcribe_audio(audio_file):
     # OpenAI APIキーを設定
     api_key = os.environ["OPENAI_API_KEY"]
-    client = openai.OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key)
     
     #文字起こしを行う
     transcription = client.audio.transcriptions.create(
     model="whisper-1", 
-    file=audio_file, 
+    file=Path(audio_file), 
     response_format="text"
     )
+    transcription = transcription.replace('\n', '')
+
+    if detect(transcription) != 'ja':
+        deepl_api_key = os.environ["DEEPL_API_KEY"]
+        translator = deepl.Translator(deepl_api_key)
+        transcription = translator.translate_text(transcription, target_lang='JA').text
+    
     return transcription
 
 # メイン関数
