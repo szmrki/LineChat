@@ -13,6 +13,7 @@ import deepl
 from langdetect import detect
 import requests
 from datetime import datetime, timedelta
+import json
 
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
@@ -44,7 +45,13 @@ def handle_text_message(event):
     text = generate_response(question)  #応答メッセージの作成
     texts = text.split('\n')     #応答メッセージに改行を含む場合、別の吹き出しとして送信するため分割
     messages = [TextSendMessage(text=texts[i]) for i in range(len(texts))]  #複数メッセージ送信の際はTextSendMessageのリストを渡す
+    if len(messages) >= 5:     #複数メッセージの送信数に上限があるため、上限を超える際は一つのメッセージとして送信する
+        messages = [TextSendMessage(text=text)]
     choice_stamp(text, messages)
+    
+    conversation = {"user": question, "assistant": text} #次回の会話の際に使用するために今回の会話を保存
+    with open("/tmp/conversation.json", "w") as f:  #/tmpにjsonで保存
+        json.dump(conversation, f)
     
     line_bot_api.reply_message(
         event.reply_token,
@@ -141,14 +148,22 @@ def generate_response(question):
     # OpenAI APIキーを設定
     api_key = os.environ["OPENAI_API_KEY"]
     client = OpenAI(api_key=api_key)
-    
+
+    messages=[
+            {"role":"system", "content": os.environ["CONTENT"]}
+        ]
+    if os.path.isfile("/tmp/conversation.json"):       #会話記録があれば、それを含めてレスポンスを作成させる
+        with open("/tmp/conversation.json", "r") as f:
+            past_messages = json.load(f)
+        os.remove("/tmp/conversation.json")
+        messages.append({"role":"user", "content": past_messages["user"]})
+        messages.append({"role":"assistant", "content": past_messages["assistant"]})
+    messages.append({"role":"user", "content": question})
+
     # ファンチューニング済みのモデルに質問を送信してレスポンスを取得
     response = client.chat.completions.create(
         model="ft:gpt-4o-mini-2024-07-18:personal::AAGVWuNG",
-        messages=[
-            {"role":"system", "content": os.environ["CONTENT"]},
-            {"role":"user", "content": question}
-            ],
+        messages=messages
     #max_tokens=50
     )
     eng_response = response.choices[0].message.content
