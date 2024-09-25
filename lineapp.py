@@ -98,7 +98,7 @@ def handle_location_message(event):
     weather_api_key = os.environ["WEATHER_API_KEY"]
     lat = event.message.latitude
     lon = event.message.longitude
-    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&units=metric&APPID={weather_api_key}"
+    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&units=metric&APPID={weather_api_key}" #天気予報のurlに接続
     jsondata = requests.get(url).json()
 
     text = weather_info(event, jsondata)
@@ -108,7 +108,6 @@ def handle_location_message(event):
         messages=[TextSendMessage(text=text), ImageSendMessage(original_content_url=icon_url, preview_image_url=icon_url)]
     )
 
-    
 #特定の文言に応じてスタンプを選択する関数
 def choice_stamp(text, messages):  
     num = random.randint(0, len(package_id_list)-1)
@@ -179,14 +178,35 @@ def transcribe_audio(audio_file):
 #緯度・経度を基に天気予報を作成する関数
 def weather_info(event, jsondata):   
     address = event.message.address
-    jst = datetime.strptime(jsondata["list"][0]["dt_txt"], '%Y-%m-%d %H:%M:%S')+timedelta(hours=9)
+    jst = datetime.strptime(jsondata["list"][0]["dt_txt"], '%Y-%m-%d %H:%M:%S')+timedelta(hours=9)  #UTCからJSTに変換
     jst = jst.strftime('%Y-%m-%d %H:%M')
     latest = jsondata["list"][0]
+    #風向を方位角をもとに決める
+    deg = latest["wind"]["deg"]
+    if 0 <= deg and deg < 22.5:
+        wind_dir = "北"
+    elif 22.5 <= deg and deg < 67.5:
+        wind_dir = "北東"
+    elif 67.5 <= deg and deg < 112.5:
+        wind_dir = "東"
+    elif 112.5 <= deg and deg < 157.5:
+        wind_dir = "南東"
+    elif 157.5 <= deg and deg < 202.5:
+        wind_dir = "南"
+    elif 202.5 <= deg and deg < 247.5:
+        wind_dir = "南西"
+    elif 247.5 <= deg and deg < 292.5:
+        wind_dir = "西"
+    elif 292.5 <= deg and deg < 337.5:
+        wind_dir = "北西"
+    else:
+        wind_dir = "北"
     text = (f'{address}付近の天気\n日時: {jst}\n'
-            f'気温: {round(float(latest["main"]["temp"]), 1)}℃\n'
+            f'気温: {round(latest["main"]["temp"], 1)}℃\n'
             f'湿度: {latest["main"]["humidity"]}%\n'
-            f'降水確率: {round(float(latest["pop"])*100)}%\n'
-            f'風速: {round(float(latest["wind"]["speed"]), 1)}m/s')
+            f'降水確率: {round(latest["pop"]*100)}%\n'
+            f'風速: {round(latest["wind"]["speed"], 1)}m/s\n'
+            f'風向: {wind_dir}')
     return text
 
 #天気のアイコン画像を取得する関数
