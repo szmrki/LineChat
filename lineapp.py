@@ -1,7 +1,8 @@
 from flask import Flask, request, abort
 from flask_cors import CORS
 from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, StickerMessage, StickerSendMessage, AudioMessage
+from linebot.models import (MessageEvent, TextMessage, TextSendMessage, StickerMessage, 
+                            StickerSendMessage, AudioMessage, LocationMessage, ImageSendMessage)
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
@@ -10,6 +11,8 @@ from pathlib import Path
 import glob
 import deepl
 from langdetect import detect
+import requests
+from datetime import datetime, timedelta
 
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
@@ -69,25 +72,42 @@ def handle_sticker_message(event):
 @handler.add(MessageEvent, message=AudioMessage)
 def handle_audio_message(event):
     message_id = event.message.id
-    #url = f'https://api-data.line.me/v2/bot/message/{message_id}/content'
     message_content = line_bot_api.get_message_content(message_id=message_id)  #音声データをバイナリデータとして取得
+
     audio_data = b''
     for chunk in message_content.iter_content():
         audio_data += chunk
-    
     audio_filename = f'audio_{message_id}.m4a'
-    with open(f'/tmp/{audio_filename}', 'wb') as f:   #Lambda関数の/tmpに一時保存
+    audio_filepath = f'/tmp/{audio_filename}'
+    with open(audio_filepath, 'wb') as f:   #Lambda関数の/tmpに一時保存
         f.write(audio_data)
 
     line_bot_api.reply_message(
         event.reply_token,
-        messages=TextSendMessage(text=transcribe_audio(f'/tmp/{audio_filename}'))
+        messages=TextSendMessage(text=transcribe_audio(audio_filepath))
     )
     
-    # 一時ディレクトリ配下のファイルを全て削除
+    # /tmp以下のファイルを全て削除
     for p in glob.glob("/tmp/*"):
        if os.path.isfile(p):
            os.remove(p)
+
+#ユーザから位置情報メッセージが送られたときの処理
+@handler.add(MessageEvent, message=LocationMessage)
+def handle_location_message(event):
+    weather_api_key = os.environ["WEATHER_API_KEY"]
+    lat = event.message.latitude
+    lon = event.message.longitude
+    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&units=metric&APPID={weather_api_key}"
+    jsondata = requests.get(url).json()
+
+    text = weather_info(event, jsondata)
+    icon_url = weather_icon(jsondata)
+    line_bot_api.reply_message(
+        event.reply_token,
+        messages=[TextSendMessage(text=text), ImageSendMessage(original_content_url=icon_url, preview_image_url=icon_url)]
+    )
+
     
 #特定の文言に応じてスタンプを選択する関数
 def choice_stamp(text, messages):  
@@ -149,12 +169,31 @@ def transcribe_audio(audio_file):
     )
     transcription = transcription.replace('\n', '')
 
-    if detect(transcription) != 'ja':
+    if detect(transcription) != 'ja':     #日本語ではないと判断されたとき、DeepLで翻訳を行う
         deepl_api_key = os.environ["DEEPL_API_KEY"]
         translator = deepl.Translator(deepl_api_key)
         transcription = translator.translate_text(transcription, target_lang='JA').text
     
     return transcription
+
+#緯度・経度を基に天気予報を作成する関数
+def weather_info(event, jsondata):   
+    address = event.message.address
+    jst = datetime.strptime(jsondata["list"][0]["dt_txt"], '%Y-%m-%d %H:%M:%S')+timedelta(hours=9)
+    jst = jst.strftime('%Y-%m-%d %H:%M')
+    latest = jsondata["list"][0]
+    text = (f'{address}付近の天気\n日時: {jst}\n'
+            f'気温: {round(float(latest["main"]["temp"]), 1)}℃\n'
+            f'湿度: {latest["main"]["humidity"]}%\n'
+            f'降水確率: {round(float(latest["pop"])*100)}%\n'
+            f'風速: {round(float(latest["wind"]["speed"]), 1)}m/s')
+    return text
+
+#天気のアイコン画像を取得する関数
+def weather_icon(jsondata):
+    icon_id = jsondata["list"][0]["weather"][0]["icon"]
+    icon_url = f'https://openweathermap.org/img/wn/{icon_id}@2x.png'
+    return icon_url
 
 # メイン関数
 if __name__ == '__main__':   #python answer.pyとして実行された場合のみ実行が行われる
