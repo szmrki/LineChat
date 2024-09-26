@@ -9,6 +9,7 @@ import deepl
 from datetime import datetime, timedelta
 import lineapp
 from botocore.errorfactory import ClientError
+import requests
 
 #特定の文言に応じてスタンプを選択する関数
 def choice_stamp(text, messages):  
@@ -93,8 +94,14 @@ def transcribe_audio(audio_file):
     return transcription
 
 #緯度・経度を基に天気予報を作成する関数
-def weather_info(event, jsondata):   
+def weather_info(event):  
+    weather_api_key = os.environ["WEATHER_API_KEY"]
     address = event.message.address
+    lat = event.message.latitude
+    lon = event.message.longitude
+    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&units=metric&APPID={weather_api_key}" #天気予報のurlに接続
+    jsondata = requests.get(url).json() 
+    
     jst = datetime.strptime(jsondata["list"][0]["dt_txt"], '%Y-%m-%d %H:%M:%S')+timedelta(hours=9)  #UTCからJSTに変換
     jst = jst.strftime('%Y-%m-%d %H:%M')
     latest = jsondata["list"][0]
@@ -124,13 +131,11 @@ def weather_info(event, jsondata):
             f'降水確率: {round(latest["pop"]*100)}%\n'
             f'風速: {round(latest["wind"]["speed"], 1)}m/s\n'
             f'風向: {wind_dir}')
-    return text
-
-#天気のアイコン画像を取得する関数
-def weather_icon(jsondata):
-    icon_id = jsondata["list"][0]["weather"][0]["icon"]
+    
+    #天気のアイコンを取得する
+    icon_id = latest["weather"][0]["icon"]
     icon_url = f'https://openweathermap.org/img/wn/{icon_id}@2x.png'
-    return icon_url
+    return text, icon_url
 
 #ランダムにスタンプを決める関数
 def random_sticker():

@@ -6,7 +6,6 @@ from linebot.models import (MessageEvent, TextMessage, TextSendMessage, StickerM
 import os
 from dotenv import load_dotenv
 import glob
-import requests
 import json
 import boto3
 import functions
@@ -109,14 +108,8 @@ def handle_audio_message(event):
 #ユーザから位置情報メッセージが送られたときの処理
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
-    weather_api_key = os.environ["WEATHER_API_KEY"]
-    lat = event.message.latitude
-    lon = event.message.longitude
-    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&units=metric&APPID={weather_api_key}" #天気予報のurlに接続
-    jsondata = requests.get(url).json()
-
-    text = functions.weather_info(event, jsondata)
-    icon_url = functions.weather_icon(jsondata)
+    text, icon_url = functions.weather_info(event)
+    
     line_bot_api.reply_message(
         event.reply_token,
         messages=[TextSendMessage(text=text), ImageSendMessage(original_content_url=icon_url, preview_image_url=icon_url)]
