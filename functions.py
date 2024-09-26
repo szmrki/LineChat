@@ -7,6 +7,8 @@ from pathlib import Path
 from langdetect import detect
 import deepl
 from datetime import datetime, timedelta
+import lineapp
+from botocore.errorfactory import ClientError
 
 #特定の文言に応じてスタンプを選択する関数
 def choice_stamp(text, messages):  
@@ -38,20 +40,26 @@ def choice_stamp(text, messages):
         messages.append(StickerSendMessage(package_id=package_id_list[num], sticker_id=sticker_love))
 
 # 質問に対するレスポンスを生成する関数
-def generate_response(question):
+def generate_response(question, event):
     # OpenAI APIキーを設定
     api_key = os.environ["OPENAI_API_KEY"]
     client = OpenAI(api_key=api_key)
 
-    messages=[
-            {"role":"system", "content": os.environ["CONTENT"]}
-        ]
-    if os.path.isfile("/tmp/conversation.json"):       #会話記録があれば、それを含めてレスポンスを作成させる
-        with open("/tmp/conversation.json", "r") as f:
-            past_messages = json.load(f)
-        os.remove("/tmp/conversation.json")
-        messages.append({"role":"user", "content": past_messages["user"]})
-        messages.append({"role":"assistant", "content": past_messages["assistant"]})
+    messages=[{"role":"system", "content": os.environ["CONTENT"]}]
+    tmp_path, key_path = make_path(event)
+    if check_s3_file_exists(key_path):       #会話記録があれば、それを含めてレスポンスを作成させる
+        past_messages = load_conversation(event)
+        os.remove(tmp_path)
+
+        n = len(past_messages) - 1
+        if n > 0:
+            if n > 1:
+                messages.append({"role":"user", "content": past_messages[n-2]["user"]})
+                messages.append({"role":"assistant", "content": past_messages[n-2]["assistant"]})
+            messages.append({"role":"user", "content": past_messages[n-1]["user"]})
+            messages.append({"role":"assistant", "content": past_messages[n-1]["assistant"]})
+        messages.append({"role":"user", "content": past_messages[n]["user"]})
+        messages.append({"role":"assistant", "content": past_messages[n]["assistant"]})
     messages.append({"role":"user", "content": question})
 
     # ファンチューニング済みのモデルに質問を送信してレスポンスを取得
@@ -136,3 +144,34 @@ def random_sticker():
         sticker_id = random.randint(52114110, 52114149)
     package_id = package_id_list[num]
     return package_id, sticker_id
+
+#S3に会話データが保存されているか確認する関数
+def check_s3_file_exists(key):
+    try:
+        lineapp.s3.head_object(Bucket=lineapp.bucket, Key=key)
+        return True
+    except ClientError:
+        return False
+    
+#会話データを読み込む関数
+def load_conversation(event):
+    tmp_path, key_path = make_path(event)
+    lineapp.s3.download_file(lineapp.bucket, key_path, tmp_path)
+    with open(tmp_path, "r") as f:
+        conversation = [json.loads(l) for l in f.readlines()]
+    return conversation
+
+#User IDをもとにパスを作成する関数
+def make_path(event):
+    user_id = lineapp.line_bot_api.get_profile(event.source.user_id).user_id
+    user_id = h(user_id)
+    tmp_path = f"/tmp/conversation_{user_id}.jsonl"
+    key_path = f"text/conversation_{user_id}.jsonl"
+    return tmp_path, key_path
+
+#ハッシュ関数
+def h(x):
+    y = 0
+    for i in range(len(x)):
+        y += ord(x[i])
+    return y % 4239047233139  #割る数が何であれば適切かはわかっていない

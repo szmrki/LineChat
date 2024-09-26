@@ -10,12 +10,14 @@ import requests
 import json
 import boto3
 import functions
+from datetime import datetime, timedelta
 
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
 
 load_dotenv() #pyenv環境内ででAPIキーを取得するため
 s3 = boto3.client("s3") 
+bucket = "line-bot-data"
 
 #Lineのアクセストークンとシークレットを設定
 line_bot_api = LineBotApi(os.environ["LINE_BOT_API"])
@@ -38,16 +40,31 @@ def home():
 def handle_text_message(event):
     question = event.message.text #ユーザからのメッセージを取得
     # ユーザーからのメッセージに対して応答
-    text = functions.generate_response(question)  #応答メッセージの作成
+    text = functions.generate_response(question, event)
     texts = text.split('\n')     #応答メッセージに改行を含む場合、別の吹き出しとして送信するため分割
     messages = [TextSendMessage(text=texts[i]) for i in range(len(texts))]  #複数メッセージ送信の際はTextSendMessageのリストを渡す
     if len(messages) >= 5:     #複数メッセージの送信数に上限があるため、上限を超える際は一つのメッセージとして送信する
         messages = [TextSendMessage(text=text)]
     functions.choice_stamp(text, messages)
     
-    conversation = {"user": question, "assistant": text} #次回の会話の際に使用するために今回の会話を保存
-    with open("/tmp/conversation.json", "w") as f:  #/tmpにjsonで保存
-        json.dump(conversation, f)
+    conversation = []
+    tmp_path, key_path = functions.make_path(event)
+    if functions.check_s3_file_exists(key_path):        #会話履歴があれば読み込む
+        conversation = functions.load_conversation(event)
+        data_time = datetime.strptime(conversation[len(conversation)-1]["date"], '%y%m%d%H%M%S')
+        if data_time + timedelta(minutes=10) < datetime.now():
+            conversation.clear()
+            s3.delete_object(Bucket=bucket, Key=key_path)
+
+    conversation.append({"user": question, "assistant": text, "date": datetime.now().strftime('%y%m%d%H%M%S')}) #次回の会話の際に使用するために今回の会話を保存
+    
+    with open(tmp_path, "w") as f:  #/tmpにjsonlで保存したのちにS3に保存
+        for obj in conversation:
+            json.dump(obj, f, ensure_ascii=False)
+            f.write('\n')
+    
+    s3.upload_file(tmp_path, bucket, key_path) 
+    os.remove(tmp_path)
     
     line_bot_api.reply_message(
         event.reply_token,
@@ -106,6 +123,6 @@ def handle_location_message(event):
     )
 
 # メイン関数
-if __name__ == '__main__':   #python answer.pyとして実行された場合のみ実行が行われる
+if __name__ == '__main__':   #python lineapp.pyとして実行された場合のみ実行が行われる
     # Flaskアプリケーションを起動
     app.run(debug=True)
