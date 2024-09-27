@@ -180,3 +180,17 @@ def h(x):
     for i in range(len(x)):
         y += ord(x[i])
     return y % 4239047233139  #割る数が何であれば適切かはわかっていない
+
+#ローディングアニメーションを表示する関数
+def show_loading_animation(event):
+    url = 'https://api.line.me/v2/bot/chat/loading/start'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {os.environ["LINE_BOT_API"]}'
+    }
+    payload = {
+        "chatId": lineapp.line_bot_api.get_profile(event.source.user_id).user_id,
+        "loadingSeconds": 10
+    }
+    payload = json.dumps(payload)
+    requests.post(url, headers=headers, data=payload)

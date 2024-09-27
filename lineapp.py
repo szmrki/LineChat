@@ -37,6 +37,8 @@ def home():
 #ユーザーからテキストメッセージが送られてきたときの処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
+    functions.show_loading_animation(event) #ローディングアニメーションを表示
+
     question = event.message.text #ユーザからのメッセージを取得
     # ユーザーからのメッセージに対して応答
     text = functions.generate_response(question, event)
@@ -65,7 +67,7 @@ def handle_text_message(event):
     
     s3.upload_file(tmp_path, bucket, key_path) 
     os.remove(tmp_path)
-    
+
     line_bot_api.reply_message(
         event.reply_token,
         messages=messages
@@ -85,6 +87,8 @@ def handle_sticker_message(event):
 #ユーザから音声メッセージが送られてきたときの処理
 @handler.add(MessageEvent, message=AudioMessage)
 def handle_audio_message(event):
+    functions.show_loading_animation(event) #ローディングアニメーションを表示
+    
     message_id = event.message.id
     message_content = line_bot_api.get_message_content(message_id=message_id)  #音声データをバイナリデータとして取得
 
