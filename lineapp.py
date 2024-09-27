@@ -41,6 +41,7 @@ def handle_text_message(event):
     # ユーザーからのメッセージに対して応答
     text = functions.generate_response(question, event)
     texts = text.split('\n')     #応答メッセージに改行を含む場合、別の吹き出しとして送信するため分割
+    texts = [s for s in texts if s != ''] #空要素があると返信してくれないので削除
     messages = [TextSendMessage(text=texts[i]) for i in range(len(texts))]  #複数メッセージ送信の際はTextSendMessageのリストを渡す
     if len(messages) >= 5:     #複数メッセージの送信数に上限があるため、上限を超える際は一つのメッセージとして送信する
         messages = [TextSendMessage(text=text)]
