@@ -18,9 +18,17 @@ load_dotenv()
 api_key = os.environ["OPENAI_API_KEY"]
 client = OpenAI(api_key=api_key)
 
-# 質問に対するレスポンスを生成する関数
-def generate_response(question, event):
+#ファインチューニング済みのモデルに質問を送信してレスポンスを取得する関数
+def get_response(messages):
+    response = client.chat.completions.create(
+        model="ft:gpt-4o-mini-2024-07-18:personal::AAGVWuNG",
+        messages=messages
+    )
+    eng_response = response.choices[0].message.content
+    return eng_response
 
+# テキストメッセージにおいて質問に対するレスポンスを生成する関数
+def generate_response(question, event):
     messages=[{"role":"system", "content": os.environ["CONTENT"]}]
     tmp_path, key_path = make_path(event)
     if check_s3_file_exists(key_path):       #会話記録があれば、それを含めてレスポンスを作成させる
@@ -38,14 +46,7 @@ def generate_response(question, event):
         messages.append({"role":"assistant", "content": past_messages[n]["assistant"]})
     messages.append({"role":"user", "content": question})
 
-    # ファンチューニング済みのモデルに質問を送信してレスポンスを取得
-    response = client.chat.completions.create(
-        model="ft:gpt-4o-mini-2024-07-18:personal::AAGVWuNG",
-        messages=messages
-    #max_tokens=50
-    )
-    eng_response = response.choices[0].message.content
-    return eng_response
+    return get_response(messages)
 
 #オーディオファイルの文字起こしをする関数
 def transcribe_audio(audio_file):
@@ -194,6 +195,13 @@ def delete_tmp_all():
        if os.path.isfile(p):
            os.remove(p)
 
+#LINE上で返信をする関数
+def reply_LINE(event, messages):
+    lineapp.line_bot_api.reply_message(
+        event.reply_token,
+        messages=messages
+    )
+
 #ローディングアニメーションを表示する関数
 def show_loading_animation(event):
     url = 'https://api.line.me/v2/bot/chat/loading/start'
@@ -208,8 +216,8 @@ def show_loading_animation(event):
     payload = json.dumps(payload)
     requests.post(url, headers=headers, data=payload)
 
-#プッシュメッセージを送信する関数→ある程度処理できるようになったらブロードキャストメッセージにする
-def send_push_message():
+#ブロードキャストメッセージを送信する関数
+def send_broadcast_message():
     #url = 'https://api.line.me/v2/bot/message/push'    プッシュメッセージにするときはこっち、payload内にtoを追加
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
@@ -218,14 +226,11 @@ def send_push_message():
     }
     question_list = ["何か質問して！", "今日は何したの？", "元気が出る一言欲しい！"]
     question = random.choice(question_list)
-    response = client.chat.completions.create(
-        model="ft:gpt-4o-mini-2024-07-18:personal::AAGVWuNG",
-        messages=[
+    messages = [
             {"role":"system", "content": os.environ["CONTENT"]},
             {"role":"user", "content": question}
         ]
-    )
-    text = response.choices[0].message.content
+    text = get_response(messages)
 
     #質問と返答を各ファイルに保存
     obj = lineapp.s3.list_objects(Bucket=lineapp.bucket, Prefix='text/') #jsonで返ってくる

@@ -2,7 +2,8 @@ from flask import Flask, request, abort
 from flask_cors import CORS
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import (MessageEvent, TextMessage, TextSendMessage, StickerMessage, 
-                            StickerSendMessage, AudioMessage, LocationMessage, ImageSendMessage)
+                            StickerSendMessage, AudioMessage, LocationMessage, ImageSendMessage,
+                            PostbackAction, PostbackEvent, QuickReply, QuickReplyButton)
 import os
 from dotenv import load_dotenv
 import boto3
@@ -32,49 +33,62 @@ def home():
     # ページを表示
     return abort(400)
 
+#ポストバックイベント時の処理
+@handler.add(PostbackEvent)
+def handle_postback(event):
+    data = event.postback.data
+    if data == "delete":
+        functions.reply_LINE(event, TextSendMessage(text="うわぁぁぁぁぁ\n\n何も覚えていない…"))
+        key_path = functions.make_path(event)[1]
+        if functions.check_s3_file_exists(key_path):
+            s3.delete_object(Bucket=bucket, Key=key_path)
+    else:
+        functions.reply_LINE(event, TextSendMessage(text="ふぅーーー\nよかったぁーーー"))
+
 #ユーザーからテキストメッセージが送られてきたときの処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     functions.show_loading_animation(event) #ローディングアニメーションを表示
 
     question = event.message.text #ユーザからのメッセージを取得
-    # ユーザーからのメッセージに対して応答
-    text = functions.generate_response(question, event)
-    texts = text.split('\n')     #応答メッセージに改行を含む場合、別の吹き出しとして送信するため分割
-    texts = [s for s in texts if s != ''] #空要素があると返信してくれないので削除
-    messages = [TextSendMessage(text=texts[i]) for i in range(len(texts))]  #複数メッセージ送信の際はTextSendMessageのリストを渡す
-    if len(messages) >= 5:     #複数メッセージの送信数に上限があるため、上限を超える際は一つのメッセージとして送信する
-        messages = [TextSendMessage(text=text)]
-    functions.choice_sticker(text, messages)
-    
-    conversation = []
-    tmp_path, key_path = functions.make_path(event)
-    if functions.check_s3_file_exists(key_path):        #会話履歴があれば読み込む
-        conversation = functions.load_conversation(tmp_path, key_path)
-        data_time = datetime.strptime(conversation[len(conversation)-1]["date"], '%y%m%d%H%M%S')
-        if data_time + timedelta(minutes=10) < datetime.now():
-            conversation.clear()
-            s3.delete_object(Bucket=bucket, Key=key_path)
+    if question == '記憶を消す':
+        quick_reply = QuickReply(items=[
+            QuickReplyButton(action=PostbackAction(label="はい", data="delete")),
+            QuickReplyButton(action=PostbackAction(label="いいえ", data="not_delete"))
+            ])
+        confirm_message = TextSendMessage(text="本当に僕の記憶を消すの…？", quick_reply=quick_reply)
+        functions.reply_LINE(event, confirm_message)
+    else:
+        # ユーザーからのメッセージに対して応答
+        text = functions.generate_response(question, event)
+        texts = text.split('\n')     #応答メッセージに改行を含む場合、別の吹き出しとして送信するため分割
+        texts = [s for s in texts if s != ''] #空要素があると返信してくれないので削除
+        messages = [TextSendMessage(text=texts[i]) for i in range(len(texts))]  #複数メッセージ送信の際はTextSendMessageのリストを渡す
+        if len(messages) >= 5:     #複数メッセージの送信数に上限があるため、上限を超える際は一つのメッセージとして送信する
+            messages = [TextSendMessage(text=text)]
+        functions.choice_sticker(text, messages)
+        
+        conversation = []
+        tmp_path, key_path = functions.make_path(event)
+        if functions.check_s3_file_exists(key_path):        #会話履歴があれば読み込む
+            conversation = functions.load_conversation(tmp_path, key_path)
+            data_time = datetime.strptime(conversation[len(conversation)-1]["date"], '%y%m%d%H%M%S')
+            if data_time + timedelta(minutes=180) < datetime.now():
+                conversation.clear()
+                s3.delete_object(Bucket=bucket, Key=key_path)
 
-    conversation.append({"user": question, "assistant": text, "date": datetime.now().strftime('%y%m%d%H%M%S')}) #次回の会話の際に使用するために今回の会話を保存
+        conversation.append({"user": question, "assistant": text, "date": datetime.now().strftime('%y%m%d%H%M%S')}) #次回の会話の際に使用するために今回の会話を保存
+        functions.record_to_s3(tmp_path, key_path, conversation)
 
-    functions.record_to_s3(tmp_path, key_path, conversation)
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        messages=messages
-    )
+        functions.reply_LINE(event, messages)
 
 #ユーザーからスタンプが送られてきたときの処理、ランダムでスタンプを送信
 @handler.add(MessageEvent, message=StickerMessage)
 def handle_sticker_message(event):
     package_id, sticker_id = functions.random_sticker()
-        
-    line_bot_api.reply_message(
-        event.reply_token,
-        #StickerSendMessage(package_id=event.message.package_id,sticker_id=event.message.sticker_id)   オウム返し
-        messages=StickerSendMessage(package_id=package_id, sticker_id=sticker_id)
-    )
+
+    functions.reply_LINE(event, StickerSendMessage(package_id=package_id, sticker_id=sticker_id)) 
+    #StickerSendMessage(package_id=event.message.package_id,sticker_id=event.message.sticker_id)   オウム返し  
 
 #ユーザから音声メッセージが送られてきたときの処理
 @handler.add(MessageEvent, message=AudioMessage)
@@ -92,22 +106,14 @@ def handle_audio_message(event):
     with open(audio_filepath, 'wb') as f:   #Lambda関数の/tmpに一時保存
         f.write(audio_data)
 
-    line_bot_api.reply_message(
-        event.reply_token,
-        messages=TextSendMessage(text=functions.transcribe_audio(audio_filepath))
-    )
-    
+    functions.reply_LINE(event, TextSendMessage(text=functions.transcribe_audio(audio_filepath)))  
     functions.delete_tmp_all()
 
 #ユーザから位置情報メッセージが送られたときの処理
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
     text, icon_url = functions.weather_info(event)
-    
-    line_bot_api.reply_message(
-        event.reply_token,
-        messages=[TextSendMessage(text=text), ImageSendMessage(original_content_url=icon_url, preview_image_url=icon_url)]
-    )
+    functions.reply_LINE(event, [TextSendMessage(text=text), ImageSendMessage(original_content_url=icon_url, preview_image_url=icon_url)])
 
 # メイン関数
 if __name__ == '__main__':   #python lineapp.pyとして実行された場合のみ実行が行われる
