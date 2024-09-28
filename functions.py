@@ -10,46 +10,21 @@ from datetime import datetime, timedelta
 import lineapp
 from botocore.errorfactory import ClientError
 import requests
+from dotenv import load_dotenv
+import glob
 
-#特定の文言に応じてスタンプを選択する関数
-def choice_stamp(text, messages):  
-    package_id_list = [11537, 11538, 11539]  #LINEスタンプ用
-    num = random.randint(0, len(package_id_list)-1)
-    if "了解" in text or "おっけー" in text:   
-        if num == 0:
-            sticker_ok = random.choice([52002735, 52002740])
-        elif num == 1:
-            sticker_ok = random.choice([51626500, 51626501, 51626520])
-        else :
-            sticker_ok = random.choice([52114113, 52114117])
-        messages.append(StickerSendMessage(package_id=package_id_list[num], sticker_id=sticker_ok)) #テキストとスタンプの同時送信のために、まとめてリストで渡す
-    if "泣" in text or "涙" in text:
-        if num == 0:
-            sticker_sad = 52002750
-        elif num == 1:
-            sticker_sad = random.choice([51626510, 51626522, 51626524, 51626529, 51626531])
-        else :
-            sticker_sad = random.choice([52114126, 52114137, 52114141, 52114145, 52114149])
-        messages.append(StickerSendMessage(package_id=package_id_list[num], sticker_id=sticker_sad))
-    if "すき！" in text or "ありがとう！" in text:
-        if num == 0:
-            sticker_love = random.choice([52002736, 52002737, 52002742, 52002743, 52002745, 52002747])
-        elif num == 1:
-            sticker_love = random.choice([51626495, 51626499, 51626502, 51626509])
-        else :
-            sticker_love = random.choice([52114111, 52114112, 52114118, 52114119, 52114124, 52114130, 52114147])
-        messages.append(StickerSendMessage(package_id=package_id_list[num], sticker_id=sticker_love))
+# OpenAI APIキーを設定
+load_dotenv()
+api_key = os.environ["OPENAI_API_KEY"]
+client = OpenAI(api_key=api_key)
 
 # 質問に対するレスポンスを生成する関数
 def generate_response(question, event):
-    # OpenAI APIキーを設定
-    api_key = os.environ["OPENAI_API_KEY"]
-    client = OpenAI(api_key=api_key)
 
     messages=[{"role":"system", "content": os.environ["CONTENT"]}]
     tmp_path, key_path = make_path(event)
     if check_s3_file_exists(key_path):       #会話記録があれば、それを含めてレスポンスを作成させる
-        past_messages = load_conversation(event)
+        past_messages = load_conversation(tmp_path, key_path)
         os.remove(tmp_path)
 
         n = len(past_messages) - 1
@@ -74,9 +49,6 @@ def generate_response(question, event):
 
 #オーディオファイルの文字起こしをする関数
 def transcribe_audio(audio_file):
-    # OpenAI APIキーを設定
-    api_key = os.environ["OPENAI_API_KEY"]
-    client = OpenAI(api_key=api_key)
     
     #文字起こしを行う
     transcription = client.audio.transcriptions.create(
@@ -137,6 +109,32 @@ def weather_info(event):
     icon_url = f'https://openweathermap.org/img/wn/{icon_id}@2x.png'
     return text, icon_url
 
+#choice_stamp関数のif文の処理
+def choice_sticker_if(text, messages, num, package_id_list, text1, text2, list0, list1, list2):
+    if text1 in text or text2 in text:
+        if num == 0:
+            sticker_id = random.choice(list0)
+        elif num == 1:
+            sticker_id = random.choice(list1)
+        else :
+            sticker_id = random.choice(list2)
+        messages.append(StickerSendMessage(package_id=package_id_list[num], sticker_id=sticker_id))
+
+#特定の文言に応じてスタンプを選択する関数
+def choice_sticker(text, messages):  
+    package_id_list = [11537, 11538, 11539]  #LINEスタンプ用
+    num = random.randint(0, len(package_id_list)-1)
+    choice_sticker_if(text, messages, num, package_id_list, "了解", "おっけー", 
+                    [52002735, 52002740], [51626500, 51626501, 51626520], [52114113, 52114117])
+    choice_sticker_if(text, messages, num, package_id_list, "泣", "涙",
+                    [52002750], 
+                    [51626510, 51626522, 51626524, 51626529, 51626531], 
+                    [52114126, 52114137, 52114141, 52114145, 52114149])
+    choice_sticker_if(text, messages, num, package_id_list, "すき！", "ありがとう！",
+                    [52002736, 52002737, 52002742, 52002743, 52002745, 52002747], 
+                    [51626495, 51626499, 51626502, 51626509], 
+                    [52114111, 52114112, 52114118, 52114119, 52114124, 52114130, 52114147])
+
 #ランダムにスタンプを決める関数
 def random_sticker():
     package_id_list = [11537, 11538, 11539]  #LINEスタンプ用
@@ -159,8 +157,7 @@ def check_s3_file_exists(key):
         return False
     
 #会話データを読み込む関数
-def load_conversation(event):
-    tmp_path, key_path = make_path(event)
+def load_conversation(tmp_path, key_path):
     lineapp.s3.download_file(lineapp.bucket, key_path, tmp_path)
     with open(tmp_path, "r") as f:
         conversation = [json.loads(l) for l in f.readlines()]
@@ -181,6 +178,22 @@ def h(x):
         y += ord(x[i])
     return y % 4239047233139  #割る数が何であれば適切かはわかっていない
 
+#会話記録をS3に保存する関数
+def record_to_s3(tmp_path, key_path, conversation):
+    with open(tmp_path, "w") as f:  #/tmpにjsonlで保存したのちにS3に保存
+        for obj in conversation:
+            json.dump(obj, f, ensure_ascii=False)
+            f.write('\n')
+    
+    lineapp.s3.upload_file(tmp_path, lineapp.bucket, key_path) 
+    os.remove(tmp_path)
+
+#/tmp以下のファイルを全て削除する関数
+def delete_tmp_all():
+    for p in glob.glob("/tmp/*"):
+       if os.path.isfile(p):
+           os.remove(p)
+
 #ローディングアニメーションを表示する関数
 def show_loading_animation(event):
     url = 'https://api.line.me/v2/bot/chat/loading/start'
@@ -190,7 +203,46 @@ def show_loading_animation(event):
     }
     payload = {
         "chatId": lineapp.line_bot_api.get_profile(event.source.user_id).user_id,
-        "loadingSeconds": 10
+        "loadingSeconds": 30
+    }
+    payload = json.dumps(payload)
+    requests.post(url, headers=headers, data=payload)
+
+#プッシュメッセージを送信する関数→ある程度処理できるようになったらブロードキャストメッセージにする
+def send_push_message():
+    #url = 'https://api.line.me/v2/bot/message/push'    プッシュメッセージにするときはこっち、payload内にtoを追加
+    url = 'https://api.line.me/v2/bot/message/broadcast'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {os.environ["LINE_BOT_API"]}'
+    }
+    question_list = ["何か質問して！", "今日は何したの？", "元気が出る一言欲しい！"]
+    question = random.choice(question_list)
+    response = client.chat.completions.create(
+        model="ft:gpt-4o-mini-2024-07-18:personal::AAGVWuNG",
+        messages=[
+            {"role":"system", "content": os.environ["CONTENT"]},
+            {"role":"user", "content": question}
+        ]
+    )
+    text = response.choices[0].message.content
+
+    #質問と返答を各ファイルに保存
+    obj = lineapp.s3.list_objects(Bucket=lineapp.bucket, Prefix='text/') #jsonで返ってくる
+    files = [content['Key'] for content in obj['Contents']] #text/のすべてのファイルを取得
+    for p in files:
+        conversation = load_conversation("/tmp/conversation_former.jsonl", p)
+        conversation.append({"user": question, "assistant": text, "date": datetime.now().strftime('%y%m%d%H%M%S')})
+        record_to_s3("/tmp/conversation_later.jsonl", p, conversation)
+        delete_tmp_all()
+    
+    payload = {
+        "messages": [
+            {
+                "type": "text",
+                "text": text
+            }
+        ]
     }
     payload = json.dumps(payload)
     requests.post(url, headers=headers, data=payload)

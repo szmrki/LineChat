@@ -5,8 +5,6 @@ from linebot.models import (MessageEvent, TextMessage, TextSendMessage, StickerM
                             StickerSendMessage, AudioMessage, LocationMessage, ImageSendMessage)
 import os
 from dotenv import load_dotenv
-import glob
-import json
 import boto3
 import functions
 from datetime import datetime, timedelta
@@ -14,7 +12,7 @@ from datetime import datetime, timedelta
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
 
-load_dotenv() #pyenv環境内ででAPIキーを取得するため
+load_dotenv() #pyenv環境内でAPIキーを取得するため
 s3 = boto3.client("s3") 
 bucket = "line-bot-data"
 
@@ -47,26 +45,20 @@ def handle_text_message(event):
     messages = [TextSendMessage(text=texts[i]) for i in range(len(texts))]  #複数メッセージ送信の際はTextSendMessageのリストを渡す
     if len(messages) >= 5:     #複数メッセージの送信数に上限があるため、上限を超える際は一つのメッセージとして送信する
         messages = [TextSendMessage(text=text)]
-    functions.choice_stamp(text, messages)
+    functions.choice_sticker(text, messages)
     
     conversation = []
     tmp_path, key_path = functions.make_path(event)
     if functions.check_s3_file_exists(key_path):        #会話履歴があれば読み込む
-        conversation = functions.load_conversation(event)
+        conversation = functions.load_conversation(tmp_path, key_path)
         data_time = datetime.strptime(conversation[len(conversation)-1]["date"], '%y%m%d%H%M%S')
         if data_time + timedelta(minutes=10) < datetime.now():
             conversation.clear()
             s3.delete_object(Bucket=bucket, Key=key_path)
 
     conversation.append({"user": question, "assistant": text, "date": datetime.now().strftime('%y%m%d%H%M%S')}) #次回の会話の際に使用するために今回の会話を保存
-    
-    with open(tmp_path, "w") as f:  #/tmpにjsonlで保存したのちにS3に保存
-        for obj in conversation:
-            json.dump(obj, f, ensure_ascii=False)
-            f.write('\n')
-    
-    s3.upload_file(tmp_path, bucket, key_path) 
-    os.remove(tmp_path)
+
+    functions.record_to_s3(tmp_path, key_path, conversation)
 
     line_bot_api.reply_message(
         event.reply_token,
@@ -105,10 +97,7 @@ def handle_audio_message(event):
         messages=TextSendMessage(text=functions.transcribe_audio(audio_filepath))
     )
     
-    # /tmp以下のファイルを全て削除
-    for p in glob.glob("/tmp/*"):
-       if os.path.isfile(p):
-           os.remove(p)
+    functions.delete_tmp_all()
 
 #ユーザから位置情報メッセージが送られたときの処理
 @handler.add(MessageEvent, message=LocationMessage)
