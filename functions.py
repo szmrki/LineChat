@@ -32,22 +32,17 @@ def generate_response(question, event):
     messages=[{"role":"system", "content": os.environ["CONTENT"]}]
     tmp_path, key_path = make_path(event)
     if check_s3_file_exists(key_path):       #会話記録があれば、それを含めてレスポンスを作成させる
-        data_time = get_last_modified(key_path)
-        if data_time + timedelta(hours=3) < datetime.now(timezone.utc):
-            lineapp.s3.delete_object(Bucket=lineapp.bucket, Key=key_path)
-            past_messages = []
-        else:
-            past_messages = load_conversation(tmp_path, key_path)   
-
-            n = len(past_messages) - 1
-            if n > 0:
-                if n > 1:
-                    messages.append({"role":"user", "content": past_messages[n-2]["user"]})
-                    messages.append({"role":"assistant", "content": past_messages[n-2]["assistant"]})
-                messages.append({"role":"user", "content": past_messages[n-1]["user"]})
-                messages.append({"role":"assistant", "content": past_messages[n-1]["assistant"]})
-            messages.append({"role":"user", "content": past_messages[n]["user"]})
-            messages.append({"role":"assistant", "content": past_messages[n]["assistant"]})
+        past_messages = how2use_memory(tmp_path, key_path)
+        n = len(past_messages)
+        if n > 0:
+            if n > 1:
+                if n > 2:
+                    messages.append({"role":"user", "content": past_messages[n-3]["user"]})
+                    messages.append({"role":"assistant", "content": past_messages[n-3]["assistant"]})
+                messages.append({"role":"user", "content": past_messages[n-2]["user"]})
+                messages.append({"role":"assistant", "content": past_messages[n-2]["assistant"]})
+            messages.append({"role":"user", "content": past_messages[n-1]["user"]})
+            messages.append({"role":"assistant", "content": past_messages[n-1]["assistant"]})       
     messages.append({"role":"user", "content": question})
 
     return get_response(messages), past_messages
@@ -231,6 +226,15 @@ def get_last_modified(key_path):
             return lm[i]
     return None
 
+#ファイルの更新日時に応じて記憶の取り扱い方を決める関数
+def how2use_memory(tmp_path, key_path):
+    if get_last_modified(key_path) + timedelta(hours=3) < datetime.now(timezone.utc):
+        lineapp.s3.delete_object(Bucket=lineapp.bucket, Key=key_path)
+        conversation = []
+    else:
+        conversation = load_conversation(tmp_path, key_path)
+    return conversation
+
 #ブロードキャストメッセージを送信する関数
 def send_broadcast_message():
     #url = 'https://api.line.me/v2/bot/message/push'    プッシュメッセージにするときはこっち、payload内にtoを追加
@@ -251,8 +255,8 @@ def send_broadcast_message():
     obj = lineapp.s3.list_objects(Bucket=lineapp.bucket, Prefix='text/') #jsonで返ってくる
     files = [content['Key'] for content in obj['Contents']] #text/のすべてのファイルを取得
     for p in files:
-        conversation = load_conversation("/tmp/conversation_former.jsonl", p)
-        conversation.append({"user": question, "assistant": text, "date": datetime.now().strftime('%y%m%d%H%M%S')})
+        conversation = how2use_memory("/tmp/conversation_former.jsonl", p)
+        conversation.append({"user": question, "assistant": text})
         record_to_s3("/tmp/conversation_later.jsonl", p, conversation)
         delete_tmp_all()
     
