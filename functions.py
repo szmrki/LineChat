@@ -6,7 +6,7 @@ from openai import OpenAI
 from pathlib import Path
 from langdetect import detect
 import deepl
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import lineapp
 from botocore.errorfactory import ClientError
 import requests
@@ -32,21 +32,25 @@ def generate_response(question, event):
     messages=[{"role":"system", "content": os.environ["CONTENT"]}]
     tmp_path, key_path = make_path(event)
     if check_s3_file_exists(key_path):       #会話記録があれば、それを含めてレスポンスを作成させる
-        past_messages = load_conversation(tmp_path, key_path)
-        os.remove(tmp_path)
+        data_time = get_last_modified(key_path)
+        if data_time + timedelta(hours=3) < datetime.now(timezone.utc):
+            lineapp.s3.delete_object(Bucket=lineapp.bucket, Key=key_path)
+            past_messages = []
+        else:
+            past_messages = load_conversation(tmp_path, key_path)   
 
-        n = len(past_messages) - 1
-        if n > 0:
-            if n > 1:
-                messages.append({"role":"user", "content": past_messages[n-2]["user"]})
-                messages.append({"role":"assistant", "content": past_messages[n-2]["assistant"]})
-            messages.append({"role":"user", "content": past_messages[n-1]["user"]})
-            messages.append({"role":"assistant", "content": past_messages[n-1]["assistant"]})
-        messages.append({"role":"user", "content": past_messages[n]["user"]})
-        messages.append({"role":"assistant", "content": past_messages[n]["assistant"]})
+            n = len(past_messages) - 1
+            if n > 0:
+                if n > 1:
+                    messages.append({"role":"user", "content": past_messages[n-2]["user"]})
+                    messages.append({"role":"assistant", "content": past_messages[n-2]["assistant"]})
+                messages.append({"role":"user", "content": past_messages[n-1]["user"]})
+                messages.append({"role":"assistant", "content": past_messages[n-1]["assistant"]})
+            messages.append({"role":"user", "content": past_messages[n]["user"]})
+            messages.append({"role":"assistant", "content": past_messages[n]["assistant"]})
     messages.append({"role":"user", "content": question})
 
-    return get_response(messages)
+    return get_response(messages), past_messages
 
 #オーディオファイルの文字起こしをする関数
 def transcribe_audio(audio_file):
@@ -162,6 +166,7 @@ def load_conversation(tmp_path, key_path):
     lineapp.s3.download_file(lineapp.bucket, key_path, tmp_path)
     with open(tmp_path, "r") as f:
         conversation = [json.loads(l) for l in f.readlines()]
+    os.remove(tmp_path)
     return conversation
 
 #User IDをもとにパスを作成する関数
@@ -215,6 +220,16 @@ def show_loading_animation(event):
     }
     payload = json.dumps(payload)
     requests.post(url, headers=headers, data=payload)
+
+#ファイルの最終更新日時を取得する関数
+def get_last_modified(key_path):
+    obj = lineapp.s3.list_objects(Bucket=lineapp.bucket, Prefix='text/')
+    files = [content['Key'] for content in obj['Contents']]
+    lm = [content['LastModified'] for content in obj['Contents']] 
+    for i in range(len(files)):
+        if files[i] == key_path:
+            return lm[i]
+    return None
 
 #ブロードキャストメッセージを送信する関数
 def send_broadcast_message():

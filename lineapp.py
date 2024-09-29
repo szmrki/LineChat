@@ -8,7 +8,6 @@ import os
 from dotenv import load_dotenv
 import boto3
 import functions
-from datetime import datetime, timedelta
 
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
@@ -60,7 +59,7 @@ def handle_text_message(event):
         functions.reply_LINE(event, confirm_message)
     else:
         # ユーザーからのメッセージに対して応答
-        text = functions.generate_response(question, event)
+        text, conversation = functions.generate_response(question, event)
         texts = text.split('\n')     #応答メッセージに改行を含む場合、別の吹き出しとして送信するため分割
         texts = [s for s in texts if s != ''] #空要素があると返信してくれないので削除
         messages = [TextSendMessage(text=texts[i]) for i in range(len(texts))]  #複数メッセージ送信の際はTextSendMessageのリストを渡す
@@ -68,16 +67,8 @@ def handle_text_message(event):
             messages = [TextSendMessage(text=text)]
         functions.choice_sticker(text, messages)
         
-        conversation = []
         tmp_path, key_path = functions.make_path(event)
-        if functions.check_s3_file_exists(key_path):        #会話履歴があれば読み込む
-            conversation = functions.load_conversation(tmp_path, key_path)
-            data_time = datetime.strptime(conversation[len(conversation)-1]["date"], '%y%m%d%H%M%S')
-            if data_time + timedelta(minutes=180) < datetime.now():
-                conversation.clear()
-                s3.delete_object(Bucket=bucket, Key=key_path)
-
-        conversation.append({"user": question, "assistant": text, "date": datetime.now().strftime('%y%m%d%H%M%S')}) #次回の会話の際に使用するために今回の会話を保存
+        conversation.append({"user": question, "assistant": text})
         functions.record_to_s3(tmp_path, key_path, conversation)
 
         functions.reply_LINE(event, messages)
