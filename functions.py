@@ -42,7 +42,9 @@ def generate_response(question, event):
                 messages.append({"role":"user", "content": past_messages[n-2]["user"]})
                 messages.append({"role":"assistant", "content": past_messages[n-2]["assistant"]})
             messages.append({"role":"user", "content": past_messages[n-1]["user"]})
-            messages.append({"role":"assistant", "content": past_messages[n-1]["assistant"]})       
+            messages.append({"role":"assistant", "content": past_messages[n-1]["assistant"]})      
+    else:
+        past_messages = [] 
     messages.append({"role":"user", "content": question})
 
     return get_response(messages), past_messages
@@ -202,6 +204,28 @@ def reply_LINE(event, messages):
         messages=messages
     )
 
+#ファイルの最終更新日時を取得する関数
+def get_last_modified(key_path):
+    obj = lineapp.s3.list_objects(Bucket=lineapp.bucket, Prefix='text/')
+    files = [content['Key'] for content in obj['Contents']]
+    lm = [content['LastModified'] for content in obj['Contents']] 
+    for i in range(len(files)):
+        if files[i] == key_path:
+            return lm[i]
+    return None
+
+#ファイルの更新日時に応じて記憶の取り扱い方を決める関数
+def how2use_memory(tmp_path, key_path):
+    #3時間以上経過していれば、記憶を消す
+    if get_last_modified(key_path) + timedelta(hours=3) < datetime.now(timezone.utc): 
+        lineapp.s3.delete_object(Bucket=lineapp.bucket, Key=key_path)
+        conversation = []
+    else:
+        conversation = load_conversation(tmp_path, key_path) #そうでなければ、記憶を取り出す
+        conversation = []
+        
+    return conversation
+
 #ローディングアニメーションを表示する関数
 def show_loading_animation(event):
     url = 'https://api.line.me/v2/bot/chat/loading/start'
@@ -215,25 +239,6 @@ def show_loading_animation(event):
     }
     payload = json.dumps(payload)
     requests.post(url, headers=headers, data=payload)
-
-#ファイルの最終更新日時を取得する関数
-def get_last_modified(key_path):
-    obj = lineapp.s3.list_objects(Bucket=lineapp.bucket, Prefix='text/')
-    files = [content['Key'] for content in obj['Contents']]
-    lm = [content['LastModified'] for content in obj['Contents']] 
-    for i in range(len(files)):
-        if files[i] == key_path:
-            return lm[i]
-    return None
-
-#ファイルの更新日時に応じて記憶の取り扱い方を決める関数
-def how2use_memory(tmp_path, key_path):
-    if get_last_modified(key_path) + timedelta(hours=3) < datetime.now(timezone.utc):
-        lineapp.s3.delete_object(Bucket=lineapp.bucket, Key=key_path)
-        conversation = []
-    else:
-        conversation = load_conversation(tmp_path, key_path)
-    return conversation
 
 #ブロードキャストメッセージを送信する関数
 def send_broadcast_message():
