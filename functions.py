@@ -216,13 +216,12 @@ def get_last_modified(key_path):
 
 #ファイルの更新日時に応じて記憶の取り扱い方を決める関数
 def how2use_memory(tmp_path, key_path):
-    #3時間以上経過していれば、記憶を消す
-    if get_last_modified(key_path) + timedelta(hours=3) < datetime.now(timezone.utc): 
+    #24時間以上経過していれば、記憶を消す
+    if get_last_modified(key_path) + timedelta(hours=24) < datetime.now(timezone.utc): 
         lineapp.s3.delete_object(Bucket=lineapp.bucket, Key=key_path)
         conversation = []
     else:
         conversation = load_conversation(tmp_path, key_path) #そうでなければ、記憶を取り出す
-        conversation = []
         
     return conversation
 
