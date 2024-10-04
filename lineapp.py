@@ -37,12 +37,18 @@ def home():
 def handle_postback(event):
     data = event.postback.data
     if data == "delete":
-        functions.reply_LINE(event, TextSendMessage(text="うわぁぁぁぁぁ\n\n何も覚えていない…"))
+        functions.reply_LINE(event, [
+            TextSendMessage(text="うわぁぁぁぁぁ\n\n何も覚えていない…"),
+            StickerSendMessage(package_id=11537, sticker_id=52002757)
+            ])
         key_path = functions.make_path(event)[1]
         if functions.check_s3_file_exists(key_path):
             s3.delete_object(Bucket=bucket, Key=key_path)
     else:
-        functions.reply_LINE(event, TextSendMessage(text="ふぅーーー\nよかったぁーーー"))
+        functions.reply_LINE(event, [
+            TextSendMessage(text="ふぅーーー\nよかったぁーーー"),
+            StickerSendMessage(package_id=11537, sticker_id=52002745)
+            ])
 
 #ユーザーからテキストメッセージが送られてきたときの処理
 @handler.add(MessageEvent, message=TextMessage)
