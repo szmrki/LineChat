@@ -274,3 +274,37 @@ def send_broadcast_message():
     }
     payload = json.dumps(payload)
     requests.post(url, headers=headers, data=payload)
+
+#誕生日をお祝いするための関数　とりあえずブロードキャストメッセージ
+def send_happy_birthday():
+    url = 'https://api.line.me/v2/bot/message/broadcast'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {os.environ["LINE_BOT_API"]}'
+    }
+    question = os.environ["FOR_BIRTHDAY"]
+    messages = [
+            {"role":"system", "content": os.environ["CONTENT"]},
+            {"role":"user", "content": question}
+        ]
+    text = get_response(messages)
+
+    #質問と返答を各ファイルに保存
+    obj = lineapp.s3.list_objects(Bucket=lineapp.bucket, Prefix='text/') #jsonで返ってくる
+    files = [content['Key'] for content in obj['Contents']] #text/のすべてのファイルを取得
+    for p in files:
+        conversation = []
+        conversation.append({"user": question, "assistant": text})
+        record_to_s3("/tmp/conversation_later.jsonl", p, conversation)
+        delete_tmp_all()
+    
+    payload = {
+        "messages": [
+            {
+                "type": "text",
+                "text": text
+            }
+        ]
+    }
+    payload = json.dumps(payload)
+    requests.post(url, headers=headers, data=payload)
