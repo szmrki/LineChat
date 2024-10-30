@@ -265,6 +265,7 @@ def send_broadcast_message():
         delete_tmp_all()
     
     payload = {
+        #プッシュメッセージの際はここに"to"を挿入
         "messages": [
             {
                 "type": "text",
