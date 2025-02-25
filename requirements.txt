@@ -1,0 +1,10 @@
+Flask
+Flask-cors
+line-bot-sdk
+boto3
+botocore
+python-dotenv
+openai
+langdetect
+deepl
+zappa
