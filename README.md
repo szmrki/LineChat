@@ -34,7 +34,7 @@ git clone https://github.com/szmrki/LineChat.git
 cd LineChat
 ~~~
 
-### 仮想環境の作成(推奨)
+### 仮想環境の作成
 ~~~sh
 python -m venv venv
 . venv/bin/activate #仮想環境の有効化
