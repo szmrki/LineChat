@@ -7,14 +7,14 @@
 - フレームワーク: Flask
 - API: OpenAI API, DeepL API, OpenWeatherMap API
 - プラットフォーム: LINE Messaging API
-- インフラ: AWS (S3, Lambda)
+- インフラ: AWS (S3, Lambda, DynamoDB)
 - デプロイ: Zappa(FlaskアプリをAWS Lambdaにデプロイするツール)
 
 ## 機能
 - OpenAIのAPIでは自身のLINEのトーク履歴を用いFine Tuningを行ったため、ある程度自然な応答ができる
 - 3トーク分の履歴を保持し回答を生成するため文脈に応じたトークが可能
 - 以前のトークから24時間以上経過していれば履歴は反映されず, 記憶は消える
-- 現時点でデータベースは用いず, ファイル保存で対応
+- 会話履歴はS3でのファイル保存で対応、ユーザIDのみDBに登録
 - 日本語の文字起こし, 外国語音声の翻訳, 天気予報
 - サーバーレス環境（AWS Lambda + Zappa）で動作
 - ある一定の時間に質問やトークが来るように設定
@@ -67,6 +67,10 @@ zappa deploy
 ~~~sh
 zappa update
 zappa schedule #スケジューリングのみ更新する場合
+~~~
+- ログを見る場合
+~~~sh
+zappa tail
 ~~~
 - 削除する場合
 ~~~sh

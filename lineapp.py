@@ -18,6 +18,7 @@ s3 = boto3.client("s3")   #s3
 bucket = "line-bot-data"
 
 dynamodb = boto3.client("dynamodb") #DynamoDB
+db_table = "line-bot-db"
 
 #Lineのアクセストークンとシークレットを設定
 line_bot_api = LineBotApi(os.environ["LINE_BOT_API"])
@@ -122,15 +123,16 @@ def handle_follow(event):
     user_id = line_bot_api.get_profile(event.source.user_id).user_id
     now = datetime.now(timezone.utc)+timedelta(hours=9)
     now = now.strftime('%Y-%m-%d-%H:%M')
-    dynamodb.put_item(    #dynamodbにuseridを登録する
-        TableName="line-bot-db",
+
+    dynamodb.put_item(    #dynamodbにuseridを登録する ブロック解除の場合は時刻が上書きされる
+        TableName=db_table,
         Item={
             'user_id': {'S': user_id},
             'time': {'S': now}
         }
     )
     functions.reply_LINE(event, TextSendMessage(text="友達登録ありがとうございます！"))
-
+    
 # メイン関数
 if __name__ == '__main__':   #python lineapp.pyとして実行された場合のみ実行が行われる
     # Flaskアプリケーションを起動
