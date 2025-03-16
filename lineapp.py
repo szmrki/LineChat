@@ -3,18 +3,21 @@ from flask_cors import CORS
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import (MessageEvent, TextMessage, TextSendMessage, StickerMessage, 
                             StickerSendMessage, AudioMessage, LocationMessage, ImageSendMessage,
-                            PostbackAction, PostbackEvent, QuickReply, QuickReplyButton)
+                            PostbackAction, PostbackEvent, QuickReply, QuickReplyButton, FollowEvent)
 import os
 from dotenv import load_dotenv
 import boto3
 import functions
+from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)  #flaskのインスタンスを作成
 CORS(app)
 
 load_dotenv() #pyenv環境内でAPIキーを取得するため
-s3 = boto3.client("s3") 
+s3 = boto3.client("s3")   #s3
 bucket = "line-bot-data"
+
+dynamodb = boto3.client("dynamodb") #DynamoDB
 
 #Lineのアクセストークンとシークレットを設定
 line_bot_api = LineBotApi(os.environ["LINE_BOT_API"])
@@ -112,6 +115,21 @@ def handle_audio_message(event):
 def handle_location_message(event):
     text, icon_url = functions.weather_info(event)
     functions.reply_LINE(event, [TextSendMessage(text=text), ImageSendMessage(original_content_url=icon_url, preview_image_url=icon_url)])
+
+#友達追加されたときの処理
+@handler.add(FollowEvent)
+def handle_follow(event):
+    user_id = line_bot_api.get_profile(event.source.user_id).user_id
+    now = datetime.now(timezone.utc)+timedelta(hours=9)
+    now = now.strftime('%Y-%m-%d-%H:%M')
+    dynamodb.put_item(    #dynamodbにuseridを登録する
+        TableName="line-bot-db",
+        Item={
+            'user_id': {'S': user_id},
+            'time': {'S': now}
+        }
+    )
+    functions.reply_LINE(event, TextSendMessage(text="友達登録ありがとうございます！"))
 
 # メイン関数
 if __name__ == '__main__':   #python lineapp.pyとして実行された場合のみ実行が行われる
