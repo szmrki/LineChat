@@ -21,7 +21,7 @@ client = OpenAI(api_key=api_key)
 #ファインチューニング済みのモデルに質問を送信してレスポンスを取得する関数
 def get_response(messages):
     response = client.chat.completions.create(
-        model="ft:gpt-4o-mini-2024-07-18:personal::AAGVWuNG",
+        model=os.environ["FINE_TUNED_MODEL"], #自身のファインチューニング済みモデルを使用する
         messages=messages
     )
     eng_response = response.choices[0].message.content
@@ -29,7 +29,7 @@ def get_response(messages):
 
 # テキストメッセージにおいて質問に対するレスポンスを生成する関数
 def generate_response(question, event):
-    messages=[{"role":"system", "content": os.environ["CONTENT"]}]
+    messages=[{"role":"system", "content": os.environ["CONTENT"]}]  #botの背景情報を設定する
     tmp_path, key_path = make_path(event)
     if check_s3_file_exists(key_path):       #会話記録があれば、それを含めてレスポンスを作成させる
         past_messages = how2use_memory(tmp_path, key_path)

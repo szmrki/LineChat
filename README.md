@@ -12,6 +12,8 @@
 
 ## 機能
 - OpenAIのAPIでは自身のLINEのトーク履歴を用いFine Tuningを行ったため、ある程度自然な応答ができる
+    - 自身のファインチューニング済みモデルを使用する必要がある
+    - 事前学習済みモデルはGPT-4o miniを使用した
 - 3トーク分の履歴を保持し回答を生成するため文脈に応じたトークが可能
 - 以前のトークから24時間以上経過していれば履歴は反映されず, 記憶は消える
 - 会話履歴はS3でのファイル保存で対応、ユーザIDのみDBに登録
@@ -48,6 +50,7 @@ python -m venv venv
 LINE_BOT_API=your_line_api_key
 LINE_WEBHOOK_HANDLER=your_webhook_handler
 OPENAI_API_KEY=your_openai_api_key
+FINE_TUNED_MODEL=your_fine_tuned_model
 CONTENT="A description of your bot's background"
 DEEPL_API_KEY=your_deepl_api_key
 WEATHER_API_KEY=your_openweathermap_api_key
@@ -78,8 +81,8 @@ zappa undeploy
 ~~~
 
 ### LINE BotのWebhook設定
-- LINE Developersにログイン
-- Messaging API設定→Webhook設定
-- Webhook URLにデプロイ時に付与されたURLを記入, 検証で通信できているか確認
-- Webhookの利用をオン
+1. LINE Developersにログイン
+1. Messaging API設定→Webhook設定
+1. Webhook URLにデプロイ時に付与されたURLを記入, 検証で通信できているか確認
+1. Webhookの利用をオン
 
